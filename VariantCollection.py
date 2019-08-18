@@ -1,3 +1,15 @@
+# Import libraries
+# Built-in
+import math
+
+# 3rd party
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
 def list_to_tab_string(data):
     """Convert a list of strings to a string with elements separated by tabs"""
 
@@ -8,6 +20,8 @@ def list_to_tab_string(data):
     string = string[:-1]
     return string
 
+
+
 class VariantCollection:
     def __init__(self):
         self.clear_data()
@@ -16,10 +30,15 @@ class VariantCollection:
     def clear_data(self):
         """Reset and initialize data in VariantCollection object"""
         
+        # Empty dataframe
+        self.dataframe = None
         # Initialize header row list
         self.header = ["Cell"]
         # Initialize list of rows
         self.rows = []
+        # Other variables
+        self.variant_appearances = ["Total appearances:"]
+        self.variants_in_row = []
     
     
     def cell_list(self, input_file):
@@ -37,7 +56,7 @@ class VariantCollection:
         return cells
 
     
-    def import_data(self, in_file):
+    def import_data(self, in_file, mode=""):
         """Import data from a single vcf file"""
         
         chrm_index = 0
@@ -50,10 +69,14 @@ class VariantCollection:
             data = file.readlines()
         
         # Initialize data list and set first element to be the cell barcode
-        data_list = ["0"] * len(self.header)
+        data_list = [0] * len(self.header)
         data_list[0] = in_file.split("/")[-1].split(".")[0]
+        variant_count = 0
+        
 
         for line in data:
+            variant_count += 1
+
             line = line.strip().split("\t")
             chrm = line[chrm_index]
             pos = line[pos_index]
@@ -66,14 +89,18 @@ class VariantCollection:
             
             # If variant already in list
             if variant in self.header:
-                data_list[self.header.index(variant)] = "1"
+                variant_index = self.header.index(variant)
+                data_list[variant_index] = 1
+                self.variant_appearances[variant_index] += 1
             else:
                 self.header.append(variant)
-                data_list.append("1")
+                self.variant_appearances.append(1)
+                data_list.append(1)
             
         self.rows.append(data_list)
+        self.variants_in_row.append(variant_count)
         self.fill_blanks()
-        
+
         print("Imported data from " + in_file)
     
     
@@ -95,8 +122,8 @@ class VariantCollection:
                 print("File not found: " + file)
                 failed += 1
 
-        print("Mass import from " + input_file + " complete.")
-        print(str(imported) + "/" + str(total) + " files imported, " + 
+        print("Mass import from " + input_file + " complete. " + 
+              str(imported) + "/" + str(total) + " files imported, " + 
               str(failed) + " files not found.")
         
     
@@ -109,19 +136,93 @@ class VariantCollection:
         
         for row in self.rows:
             if len(row) < width:
-                zeros = ["0"] * (width-len(row))
+                zeros = [0] * (width-len(row))
                 row += zeros
     
     
-    def export_data(self, file="variants.txt"):
+    def export_data(self, file="variants.csv"):
         """Exports data into a tab-separated text file"""
         
-        with open(file, 'w') as output:
-            # Add header
-            header = list_to_tab_string(self.header)
-            output.write(header + "\n")
+        self.dataframe.to_csv(file, index=False)
+    
+    
+    def filter_variants(self, minscore=5, mode=None, data_filter="variant"):
+        """
+        Remove all variants which don't show up above a certain number of times
+        
+        NOTE: WILL CAUSE UNEXPECTED BEHAVIOR IF LABELS ARE NOT UNIQUE
+        """
+        
+        if data_filter == "cell":
+            to_delete = []
+            subcount = [0] * len(self.header)
+            # Throw errors if attempting to access first element (safety)
+            subcount[0] = None
             
-            # Add data 
-            for line in self.rows:
-                data = list_to_tab_string(line)
-                output.write(data + "\n")
+            if mode == "trim-bottom":
+                # Trim bottom n% of cells by variant count
+                sorted_counts = sorted(self.variants_in_row)
+                min_index = int(math.ceil((minscore/100) * 
+                                          len(self.variants_in_row)))
+                min_count = sorted_counts[min_index]
+
+            else:
+                min_count = minscore
+            
+            # Find rows to remove and add row index to list
+            for row in range(len(self.rows)):
+                if self.variants_in_row[row] < min_count:
+                    to_delete.append(row)
+
+
+            # Adjust appearance count
+            for row in to_delete:
+                for i in range(1, len(self.header)):
+                    if self.rows[row][i] == 1:
+                        self.variant_appearances[i] -= 1
+                    
+            # Remove rows
+            for row in range(len(self.rows) - 1, -1, -1):
+                if row in to_delete:
+                    del self.rows[row]
+            
+        
+        else:
+            # Variant mode
+            if mode == "percent":
+                # Variant must show up in certain % of cells
+                min_count = len(self.rows)
+                min_count = int(math.ceil((minscore/100) * cell_count))
+            elif mode == "trim-bottom":
+                # Variant must not be in bottom n% of all variants
+                sorted_counts = sorted(self.variant_appearances)
+                min_index = int(math.ceil((minscore/100) * 
+                                          len(self.variant_appearances)))
+                min_count = sorted_counts[min_index]
+            else:
+                min_count = minscore
+
+
+            for i in range(len(self.variant_appearances) - 1, 0, -1):
+                if self.variant_appearances[i] < min_count:
+                    # Wipe variant from database
+                    del self.header[i]
+                    for row in range(len(self.rows)):
+                        del self.rows[row][i]
+                    del self.variant_appearances[i]
+    
+    
+    def generate_dataframe(self):
+        """Create pandas dataframe from lists"""
+
+        self.dataframe = pd.DataFrame(self.rows, columns=self.header)
+
+
+    def update_data(self):
+        """Update self.* variables to match self.dataframe"""
+
+        self.header = self.dataframe.columns.tolist()
+        self.rows = self.dataframe.values.tolist()
+        self.variant_appearances = ["Total appearances:"]
+        self.variants_in_row = []
+
