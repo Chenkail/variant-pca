@@ -13,13 +13,9 @@ from sklearn.preprocessing import StandardScaler
 
 class VariantCollection:
     def __init__(self):
-        self.clear_data()
-    
-    
-    def clear_data(self):
-        """Reset and initialize data in VariantCollection object"""
+        """Initialize data in VariantCollection object"""
         
-        # Empty dataframe
+        # Create empty dataframe
         self.dataframe = None
         # Initialize header row list
         self.header = ["Cell"]
@@ -29,21 +25,7 @@ class VariantCollection:
         self.variant_appearances = ["Total appearances:"]
         self.variants_in_row = []
     
-    
-    def cell_list(self, input_file):
-        """Returns barcodes given list"""
-
-        with open(input_file) as file:
-            data = file.readlines()
-
-        cells = []
-        for line in data:
-            line2 = line.strip()
-            if line2 != "":
-                cells.append(line2)
-
-        return cells
-
+    # -------- Class interface -------- #
     
     def import_data(self, in_file, mode=""):
         """Import data from a single vcf file"""
@@ -116,19 +98,6 @@ class VariantCollection:
               str(failed) + " files not found.")
         
     
-    def fill_blanks(self):
-        """Add zeros to empty spots in table"""
-        
-        width = 0
-        for row in self.rows:
-            width = max(width, len(row))
-        
-        for row in self.rows:
-            if len(row) < width:
-                zeros = [0] * (width-len(row))
-                row += zeros
-    
-    
     def export_data(self, file="variants.csv"):
         """Exports data into a text file"""
         
@@ -174,7 +143,6 @@ class VariantCollection:
             for row in range(len(self.rows) - 1, -1, -1):
                 if row in to_delete:
                     del self.rows[row]
-            
         
         else:
             # Variant mode
@@ -200,7 +168,26 @@ class VariantCollection:
                         del self.rows[row][i]
                     del self.variant_appearances[i]
     
-    
+    # -------- Visualizations -------- #
+
+    def plot_kmeans(self):
+        snips = self.dataframe.iloc[:, 1:].values
+        snips = StandardScaler().fit_transform(snips)
+
+        # PCA
+        pca = PCA(n_components=2)
+        prcomp = pca.fit_transform(snips)
+        prinDf = pd.DataFrame(data=prcomp, columns=['PC1', 'PC2'])
+        finalDf = pd.concat([prinDf, self.dataframe[['Cell']]], axis = 1)
+
+        # K-means
+        kmeans = KMeans(n_clusters=2).fit(snips)
+
+        # Plot using k-means colors
+        plt.scatter(prinDf['PC1'], prinDf['PC2'], c= kmeans.labels_.astype(float), s=50, alpha=0.75)
+
+    # -------- Data syncing -------- #
+
     def generate_dataframe(self):
         """Create pandas dataframe from lists"""
 
@@ -214,4 +201,33 @@ class VariantCollection:
         self.rows = self.dataframe.values.tolist()
         self.variant_appearances = ["Total appearances:"]
         self.variants_in_row = []
+    
+    # -------- Backend -------- #
+
+    def cell_list(self, input_file):
+        """Returns barcodes given list"""
+
+        with open(input_file) as file:
+            data = file.readlines()
+
+        cells = []
+        for line in data:
+            line2 = line.strip()
+            if line2 != "":
+                cells.append(line2)
+
+        return cells
+    
+    
+    def fill_blanks(self):
+        """Add zeros to empty spots in table"""
+        
+        width = 0
+        for row in self.rows:
+            width = max(width, len(row))
+        
+        for row in self.rows:
+            if len(row) < width:
+                zeros = [0] * (width-len(row))
+                row += zeros
 
