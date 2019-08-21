@@ -10,17 +10,6 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-def list_to_tab_string(data):
-    """Convert a list of strings to a string with elements separated by tabs"""
-
-    string = ""
-    for text in data:
-        string = string + text + "\t"
-    # Remove tab at end
-    string = string[:-1]
-    return string
-
-
 
 class VariantCollection:
     def __init__(self):
@@ -141,7 +130,7 @@ class VariantCollection:
     
     
     def export_data(self, file="variants.csv"):
-        """Exports data into a tab-separated text file"""
+        """Exports data into a text file"""
         
         self.dataframe.to_csv(file, index=False)
     
