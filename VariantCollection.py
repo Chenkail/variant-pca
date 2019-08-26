@@ -11,6 +11,11 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 
+def list_to_file(data, filename):
+    with open(filename, 'w') as out:
+        out.write('\n'.join(data))
+
+
 class VariantCollection:
     def __init__(self):
         """Initialize data in VariantCollection object"""
@@ -170,21 +175,51 @@ class VariantCollection:
     
     # -------- Visualizations -------- #
 
-    def plot_kmeans(self):
+    def kmeans(self, clusters=2, plot=True):
+        """Create PCA 1/2 plot with colors based on k-means clustering"""
+        
+        # Scale data
         snips = self.dataframe.iloc[:, 1:].values
         snips = StandardScaler().fit_transform(snips)
 
-        # PCA
-        pca = PCA(n_components=2)
-        prcomp = pca.fit_transform(snips)
-        prinDf = pd.DataFrame(data=prcomp, columns=['PC1', 'PC2'])
-        finalDf = pd.concat([prinDf, self.dataframe[['Cell']]], axis = 1)
-
         # K-means
-        kmeans = KMeans(n_clusters=2).fit(snips)
+        kmeans = KMeans(n_clusters=clusters).fit(snips)
 
-        # Plot using k-means colors
-        plt.scatter(prinDf['PC1'], prinDf['PC2'], c= kmeans.labels_.astype(float), s=50, alpha=0.75)
+        if plot:
+            # PCA
+            pca = PCA(n_components=2)
+            prcomp = pca.fit_transform(snips)
+            prinDf = pd.DataFrame(data=prcomp, columns=['PC1', 'PC2'])
+            finalDf = pd.concat([prinDf, self.dataframe[['Cell']]], axis = 1)
+
+            # Plot using k-means colors
+            plt.scatter(prinDf['PC1'], prinDf['PC2'], 
+                        c=kmeans.labels_.astype(float), s=50, alpha=0.75)
+        else:
+            # If not plotting, simply return the kmeans values array
+            return kmeans.labels_
+
+
+    def cell_sort(self):
+        """Return lists of cell barcodes based on k-means sorting"""
+
+        km = self.kmeans(plot=False)
+        data = {}
+        for i in range(len(km)):
+            if km[i] in data.keys():
+                data[km[i]].append(self.rows[i][0])
+            else:
+                data[km[i]] = [self.rows[i][0]]
+        
+        return data
+    
+    
+    def export_cell_lists(self, suffix=".kmcells.txt"):
+        """Write lists of cells to files"""
+        
+        sorted_cells = self.cell_sort()
+        for k, v in sorted_cells.items():
+            list_to_file(v, str(k) + suffix)
 
     # -------- Data syncing -------- #
 
@@ -230,4 +265,3 @@ class VariantCollection:
             if len(row) < width:
                 zeros = [0] * (width-len(row))
                 row += zeros
-
