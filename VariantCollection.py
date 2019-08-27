@@ -32,7 +32,7 @@ class VariantCollection:
     
     # -------- Class interface -------- #
     
-    def import_data(self, in_file, mode=""):
+    def import_data(self, in_file, mode="", verbose=True):
         """Import data from a single vcf file"""
         
         chrm_index = 0
@@ -76,23 +76,23 @@ class VariantCollection:
         self.rows.append(data_list)
         self.variants_in_row.append(variant_count)
         self.fill_blanks()
-
-        print("Imported data from " + in_file)
+        
+        if verbose:
+            print("Imported data from " + in_file)
     
     
-    def mass_import(self, input_file):
+    def mass_import(self, input_file, verbose=True):
         """Imports from all files listed in input file"""
         
         cell_list = self.cell_list(input_file)
         total = len(cell_list)
-        print(str(total) + " filenames found.")
         
         imported = 0
         failed = 0
         
         for file in cell_list:
             try:
-                self.import_data(file)
+                self.import_data(file, verbose=verbose)
                 imported += 1
             except FileNotFoundError:
                 print("File not found: " + file)
@@ -175,7 +175,8 @@ class VariantCollection:
     
     # -------- Visualizations -------- #
 
-    def kmeans(self, clusters=2, plot=True):
+    def kmeans(self, clusters=2, plot=True, marker=None, 
+               custom_markers={}, alpha=0.75):
         """Create PCA 1/2 plot with colors based on k-means clustering"""
         
         # Scale data
@@ -188,13 +189,27 @@ class VariantCollection:
         if plot:
             # PCA
             pca = PCA(n_components=2)
-            prcomp = pca.fit_transform(snips)
-            prinDf = pd.DataFrame(data=prcomp, columns=['PC1', 'PC2'])
-            finalDf = pd.concat([prinDf, self.dataframe[['Cell']]], axis = 1)
-
-            # Plot using k-means colors
-            plt.scatter(prinDf['PC1'], prinDf['PC2'], 
-                        c=kmeans.labels_.astype(float), s=50, alpha=0.75)
+            fit_pca = pca.fit_transform(snips)
+            pca_data = pd.DataFrame(data=fit_pca, columns=['PC1', 'PC2'])
+            pca_data['Color'] = pd.Series(kmeans.labels_.astype(float))
+            labeled_pca = pd.concat([pca_data, self.dataframe[['Cell']]], 
+                                    axis=1)
+            
+            # User-defined markers
+            if custom_markers:
+                for marker in custom_markers.keys():
+                    cell_column = labeled_pca.Cell
+                    cut = cell_column.str.contains(custom_markers[marker])
+                    filtered = pca_data[cut]
+                    plt.scatter(filtered['PC1'], filtered['PC2'], 
+                                marker=marker, c=filtered['Color'], 
+                                s=50, alpha=alpha)
+            else:
+                # Plot using k-means colors
+                plt.scatter(pca_data['PC1'], pca_data['PC2'], marker=marker, 
+                            c=kmeans.labels_.astype(float), s=50, alpha=alpha)
+            
+            
         else:
             # If not plotting, simply return the kmeans values array
             return kmeans.labels_
@@ -265,3 +280,4 @@ class VariantCollection:
             if len(row) < width:
                 zeros = [0] * (width-len(row))
                 row += zeros
+
