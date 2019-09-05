@@ -23,6 +23,11 @@ do
         mkdir $folder
     fi
     
+    infodir="../Info"
+    if [ ! -d "$infodir" ]; then
+        mkdir $infodir
+    fi
+    
     samfile=$prefix.sam
     vcffile=$prefix.vcf
     vcfbest=$prefix.best.vcf
@@ -39,7 +44,11 @@ do
     
     # Find where table starts
     top=$(awk '/#CHROM/{ print NR; exit }' $infile)
-    
     # Remove header, reduce to important columns, and output to file
     cut -f 1,2,4,5 $vcfbest | tail -n +$top > $outfile
+    cp $outfile ../Info
+    echo "Info file generated"
+    
+    echo
+    
 done
