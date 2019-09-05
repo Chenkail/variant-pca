@@ -43,7 +43,7 @@ do
     echo "bcftools complete"
     
     # Find where table starts
-    top=$(awk '/#CHROM/{ print NR; exit }' $infile)
+    top=$(awk '/#CHROM/{ print NR; exit }' $vcfbest)
     # Remove header, reduce to important columns, and output to file
     cut -f 1,2,4,5 $vcfbest | tail -n +$top > $outfile
     cp $outfile ../Info
