@@ -59,7 +59,7 @@ class VariantCollection:
             ref = line[ref_index]
             alt = line[alt_index]
 
-            location = chrm + "-" + pos
+            location = chrm + "_" + pos
             delta = ref + "->" + alt
             variant = location + ":" + delta
             
@@ -95,7 +95,9 @@ class VariantCollection:
                 self.import_data(file, verbose=verbose)
                 imported += 1
             except FileNotFoundError:
-                print("File not found: " + file)
+                if verbose:
+                    print("File not found: " + file)
+                
                 failed += 1
 
         print("Mass import from " + input_file + " complete. " + 
@@ -173,9 +175,9 @@ class VariantCollection:
                         del self.rows[row][i]
                     del self.variant_appearances[i]
     
-    # -------- Visualizations -------- #
+    # -------- Analysis -------- #
 
-    def kmeans(self, clusters=2, plot=True, marker=None, 
+    def kmeans(self, clusters=2, runs=25, plot=True, marker=None, 
                custom_markers={}, alpha=0.75):
         """Create PCA 1/2 plot with colors based on k-means clustering"""
         
@@ -184,7 +186,7 @@ class VariantCollection:
         snips = StandardScaler().fit_transform(snips)
 
         # K-means
-        kmeans = KMeans(n_clusters=clusters).fit(snips)
+        kmeans = KMeans(n_clusters=clusters, n_init=runs).fit(snips)
 
         if plot:
             # PCA
@@ -215,10 +217,10 @@ class VariantCollection:
             return kmeans.labels_
 
 
-    def cell_sort(self):
+    def cell_sort(self, clusters=2):
         """Return lists of cell barcodes based on k-means sorting"""
 
-        km = self.kmeans(plot=False)
+        km = self.kmeans(plot=False, clusters=clusters)
         data = {}
         for i in range(len(km)):
             if km[i] in data.keys():
@@ -229,10 +231,10 @@ class VariantCollection:
         return data
     
     
-    def export_cell_lists(self, suffix=".kmcells.txt"):
+    def export_cell_lists(self, suffix=".kmcells.txt", clusters=2):
         """Write lists of cells to files"""
         
-        sorted_cells = self.cell_sort()
+        sorted_cells = self.cell_sort(clusters=clusters)
         for k, v in sorted_cells.items():
             list_to_file(v, str(k) + suffix)
 
@@ -265,7 +267,7 @@ class VariantCollection:
             line2 = line.strip()
             if line2 != "":
                 cells.append(line2)
-
+        
         return cells
     
     
@@ -280,4 +282,42 @@ class VariantCollection:
             if len(row) < width:
                 zeros = [0] * (width-len(row))
                 row += zeros
+    
+    
+    
+    def generate_vcf(self, header_file, out_file="test.vcf", qual=50):
+        # Placeholders for unknown data
+        id_placeholder = "."
+        filter_placeholder = "."
+        info_placeholder = "."
+        format_placeholder = "."
+        sample_placeholder = "."
+        
+        # Copy header to file, one line at a time
+        with open(header_file) as head:
+            with open(out_file, "w") as out:
+                for line in head:
+                    # Skip line if blank
+                    if line.strip() != "":
+                        out.write(line)
+                    
+                    # Break if last line written is end of header
+                    if line.startswith("#CHROM"):
+                        break
 
+        # Add data back
+        with open(out_file, "a") as output:
+            for cell in self.dataframe["Cell"]:
+                for i in range(1, len(self.header)):
+                    variant = self.header[i]
+
+                    chrom, pos = variant.split(":")[0].split("_")
+                    ref, alt = variant.split(":")[1].split("->")
+                    data_list = [chrom, pos, id_placeholder, ref, alt, 
+                                 str(qual), filter_placeholder, 
+                                 info_placeholder, format_placeholder, 
+                                 sample_placeholder]
+                    
+                    # Tab separate data and add newline to end
+                    line = "\t".join(data_list)
+                    output.write(line + "\n")
