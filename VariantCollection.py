@@ -305,12 +305,14 @@ class VariantCollection:
                     if line.startswith("#CHROM"):
                         break
 
+        # Sort variants based on location
+        variant_list = self.header[1:]
+        sorted_variants = self.location_sort(variant_list)
+
         # Add data back
         with open(out_file, "a") as output:
             for cell in self.dataframe["Cell"]:
-                for i in range(1, len(self.header)):
-                    variant = self.header[i]
-
+                for variant in sorted_variants:
                     chrom, pos = variant.split(":")[0].split("_")
                     ref, alt = variant.split(":")[1].split("->")
                     data_list = [chrom, pos, id_placeholder, ref, alt, 
@@ -321,3 +323,59 @@ class VariantCollection:
                     # Tab separate data and add newline to end
                     line = "\t".join(data_list)
                     output.write(line + "\n")
+    
+
+    def location_sort(self, variant_list):
+        """Sorts a list of variant tuples by location"""
+
+        # Split into components
+        data_list = []
+        for variant in variant_list:
+            location = variant.split(":")[0].split("_")
+            delta = variant.split(":")[1].split("->")
+            data = location + delta
+            data_list.append(data)
+
+        # Sort by chromosome
+        chromsome_sorted_list = []
+        for variant in sorted(data_list, key=lambda variant: variant[0]):
+            chromsome_sorted_list.append(variant)
+
+        # Initialize variables for sorting by location on chromosome
+        current_chromsome = chromsome_sorted_list[0][0]
+        location_sort = []
+        chromsome_group = []
+
+        for variant in chromsome_sorted_list:
+            chromosome = variant[0]
+            if chromosome != current_chromsome:
+                # Sort by position within chromosome
+                chromsome_group.sort(key=lambda data: int(data[1]))
+                
+                # Add sorted variants from first group 
+                for data in chromsome_group:
+                    location_sort.append(data)
+
+                chromsome_group = [variant]
+                
+                # Update for group from next chromosome
+                current_chromsome = chromosome
+                
+            else:
+                chromsome_group.append(variant)
+
+        # Do it one more time for the last group
+        chromsome_group.sort(key=lambda data: int(data[1]))
+        for data in chromsome_group:
+            location_sort.append(data)
+
+        # Convert back to list of strings
+        final_list = []
+        for variant in location_sort:
+            location = variant[0] + "_" + variant[1]
+            delta = variant[2] + "->" + variant[3]
+            variant_string = location + ":" + delta
+            final_list.append(variant_string)
+        
+        return final_list
+
