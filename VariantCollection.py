@@ -30,6 +30,7 @@ class VariantCollection:
         self.variant_appearances = ["Total appearances:"]
         self.variants_in_row = []
     
+    
     # -------- Class interface -------- #
     
     def import_data(self, in_file, mode="", verbose=True):
@@ -103,12 +104,6 @@ class VariantCollection:
         print("Mass import from " + input_file + " complete. " + 
               str(imported) + "/" + str(total) + " files imported, " + 
               str(failed) + " files not found.")
-        
-    
-    def export_data(self, file="variants.csv"):
-        """Exports data into a text file"""
-        
-        self.dataframe.to_csv(file, index=False)
     
     
     def filter_variants(self, minscore=5, mode=None, data_filter="variant"):
@@ -175,6 +170,68 @@ class VariantCollection:
                         del self.rows[row][i]
                     del self.variant_appearances[i]
     
+
+    # -------- Data Output -------- #
+
+    def export_data(self, file="variants.csv"):
+        """Exports data into a text file"""
+        
+        self.dataframe.to_csv(file, index=False)
+
+
+    def generate_vcf(self, header_file, out_file="test.vcf", qual=50):
+        """
+        Creates a vcf file from the data
+        
+        Uses placeholders for lost data
+        """
+        
+        # Placeholders for unknown data
+        id_placeholder = "."
+        filter_placeholder = "."
+        info_placeholder = "."
+        format_placeholder = "GT"
+        sample_placeholder = "1/1"
+        
+        # Copy header to file, one line at a time
+        with open(header_file) as head:
+            with open(out_file, "w") as out:
+                for line in head:
+                    # Skip line if blank
+                    if line.strip() != "":
+                        out.write(line)
+                    
+                    # Break if last line written is end of header
+                    if line.startswith("#CHROM"):
+                        break
+
+        # Sort variants based on location
+        variant_list = self.header[1:]
+        sorted_variants = self.location_sort(variant_list)
+
+        # Add data back
+        with open(out_file, "a") as output:
+            for variant in sorted_variants:
+                chrom, pos = variant.split(":")[0].split("_")
+                ref, alt = variant.split(":")[1].split("->")
+                data_list = [chrom, pos, id_placeholder, ref, alt, 
+                                str(qual), filter_placeholder, 
+                                info_placeholder, format_placeholder, 
+                                sample_placeholder]
+                
+                # Tab separate data and add newline to end
+                line = "\t".join(data_list)
+                output.write(line + "\n")
+    
+
+    def export_cell_lists(self, suffix=".kmcells.txt", clusters=2):
+        """Write lists of cells to files"""
+        
+        sorted_cells = self.cell_sort(clusters=clusters)
+        for k, v in sorted_cells.items():
+            list_to_file(v, str(k) + suffix)
+    
+
     # -------- Analysis -------- #
 
     def kmeans(self, clusters=2, runs=25, plot=True, marker=None, 
@@ -229,14 +286,7 @@ class VariantCollection:
                 data[km[i]] = [self.rows[i][0]]
         
         return data
-    
-    
-    def export_cell_lists(self, suffix=".kmcells.txt", clusters=2):
-        """Write lists of cells to files"""
-        
-        sorted_cells = self.cell_sort(clusters=clusters)
-        for k, v in sorted_cells.items():
-            list_to_file(v, str(k) + suffix)
+
 
     # -------- Data syncing -------- #
 
@@ -254,6 +304,7 @@ class VariantCollection:
         self.variant_appearances = ["Total appearances:"]
         self.variants_in_row = []
     
+
     # -------- Backend -------- #
 
     def cell_list(self, input_file):
@@ -284,47 +335,6 @@ class VariantCollection:
                 row += zeros
     
     
-    
-    def generate_vcf(self, header_file, out_file="test.vcf", qual=50):
-        # Placeholders for unknown data
-        id_placeholder = "."
-        filter_placeholder = "."
-        info_placeholder = "."
-        format_placeholder = "."
-        sample_placeholder = "."
-        
-        # Copy header to file, one line at a time
-        with open(header_file) as head:
-            with open(out_file, "w") as out:
-                for line in head:
-                    # Skip line if blank
-                    if line.strip() != "":
-                        out.write(line)
-                    
-                    # Break if last line written is end of header
-                    if line.startswith("#CHROM"):
-                        break
-
-        # Sort variants based on location
-        variant_list = self.header[1:]
-        sorted_variants = self.location_sort(variant_list)
-
-        # Add data back
-        with open(out_file, "a") as output:
-            for cell in self.dataframe["Cell"]:
-                for variant in sorted_variants:
-                    chrom, pos = variant.split(":")[0].split("_")
-                    ref, alt = variant.split(":")[1].split("->")
-                    data_list = [chrom, pos, id_placeholder, ref, alt, 
-                                 str(qual), filter_placeholder, 
-                                 info_placeholder, format_placeholder, 
-                                 sample_placeholder]
-                    
-                    # Tab separate data and add newline to end
-                    line = "\t".join(data_list)
-                    output.write(line + "\n")
-    
-
     def location_sort(self, variant_list):
         """Sorts a list of variant tuples by location"""
 
