@@ -31,7 +31,7 @@ do
     samfile=$prefix.sam
     vcffile=$prefix.vcf
     vcfbest=$prefix.best.vcf
-    outfile=$prefix.info.csv
+    outfile=$prefix.info.tsv
 
     # Make files
     cp header.txt $samfile
