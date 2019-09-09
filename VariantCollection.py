@@ -179,19 +179,13 @@ class VariantCollection:
         self.dataframe.to_csv(file, index=False)
 
 
-    def generate_vcf(self, header_file, out_file="test.vcf", qual=50):
+    def generate_vcf(self, header_file, out_file="test.vcf", qual_=50, id_=".", 
+                     filter_=".", info_=".", format_="GT", sample_="1/1"):
         """
         Creates a vcf file from the data
         
         Uses placeholders for lost data
         """
-        
-        # Placeholders for unknown data
-        id_placeholder = "."
-        filter_placeholder = "."
-        info_placeholder = "."
-        format_placeholder = "GT"
-        sample_placeholder = "1/1"
         
         # Copy header to file, one line at a time
         with open(header_file) as head:
@@ -212,12 +206,11 @@ class VariantCollection:
         # Add data back
         with open(out_file, "a") as output:
             for variant in sorted_variants:
+                # Make list from data + placeholder values
                 chrom, pos = variant.split(":")[0].split("_")
                 ref, alt = variant.split(":")[1].split("->")
-                data_list = [chrom, pos, id_placeholder, ref, alt, 
-                                str(qual), filter_placeholder, 
-                                info_placeholder, format_placeholder, 
-                                sample_placeholder]
+                data_list = [chrom, pos, id_, ref, alt, str(qual_), filter_, 
+                                info_, format_, sample_]
                 
                 # Tab separate data and add newline to end
                 line = "\t".join(data_list)
