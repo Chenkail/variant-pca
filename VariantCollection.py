@@ -40,6 +40,7 @@ class VariantCollection:
         pos_index = 1
         ref_index = 2
         alt_index = 3
+        sample_index = 4
 
         with open(in_file) as file:
             table_header = file.readline()
@@ -59,7 +60,9 @@ class VariantCollection:
             pos = line[pos_index]
             ref = line[ref_index]
             alt = line[alt_index]
-
+            sample_data = line[sample_index]
+            genotype_data = sample_data.split(":")[0]
+            
             location = chrm + "_" + pos
             delta = ref + "->" + alt
             variant = location + ":" + delta
@@ -67,12 +70,12 @@ class VariantCollection:
             # If variant already in list
             if variant in self.header:
                 variant_index = self.header.index(variant)
-                data_list[variant_index] = 1
+                data_list[variant_index] = genotype_data
                 self.variant_appearances[variant_index] += 1
             else:
                 self.header.append(variant)
                 self.variant_appearances.append(1)
-                data_list.append(1)
+                data_list.append(genotype_data)
             
         self.rows.append(data_list)
         self.variants_in_row.append(variant_count)
@@ -180,12 +183,14 @@ class VariantCollection:
 
 
     def generate_vcf(self, header_file, out_file="test.vcf", qual_=50, id_=".", 
-                     filter_=".", info_=".", format_="GT", sample_="1/1"):
+                     filter_=".", info_="."):
         """
         Creates a vcf file from the data
         
         Uses placeholders for lost data
         """
+        
+        format_="GT"
         
         # Copy header to file, one line at a time
         with open(header_file) as head:
@@ -209,8 +214,15 @@ class VariantCollection:
                 # Make list from data + placeholder values
                 chrom, pos = variant.split(":")[0].split("_")
                 ref, alt = variant.split(":")[1].split("->")
+                
+                # Find sample data in dataframe
+                for i in range(len(self.dataframe.index)):
+                    sample_info = self.dataframe.iloc[i][variant]
+                    if sample_info:
+                        break
+                
                 data_list = [chrom, pos, id_, ref, alt, str(qual_), filter_, 
-                                info_, format_, sample_]
+                                info_, format_, sample_info]
                 
                 # Tab separate data and add newline to end
                 line = "\t".join(data_list)
@@ -231,8 +243,11 @@ class VariantCollection:
                custom_markers={}, alpha=0.75):
         """Create PCA 1/2 plot with colors based on k-means clustering"""
         
+        bdataframe = self.dataframe.copy()
+        bdataframe = bdataframe.replace("[0-9]+[/|][0-9]+.*", "1", regex=True)
+        
         # Scale data
-        snips = self.dataframe.iloc[:, 1:].values
+        snips = bdataframe.iloc[:, 1:].values
         snips = StandardScaler().fit_transform(snips)
 
         # K-means
@@ -244,7 +259,7 @@ class VariantCollection:
             fit_pca = pca.fit_transform(snips)
             pca_data = pd.DataFrame(data=fit_pca, columns=['PC1', 'PC2'])
             pca_data['Color'] = pd.Series(kmeans.labels_.astype(float))
-            labeled_pca = pd.concat([pca_data, self.dataframe[['Cell']]], 
+            labeled_pca = pd.concat([pca_data, bdataframe[['Cell']]], 
                                     axis=1)
             
             # User-defined markers
