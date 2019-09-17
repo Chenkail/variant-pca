@@ -240,7 +240,7 @@ class VariantCollection:
     # -------- Analysis -------- #
 
     def kmeans(self, clusters=2, runs=25, plot=True, marker=None, 
-               custom_markers={}, alpha=0.75):
+               custom_markers={}, alpha=0.75, verbose=0, plot_centroids=False):
         """Create PCA 1/2 plot with colors based on k-means clustering"""
         
         bdataframe = self.dataframe.copy()
@@ -249,7 +249,7 @@ class VariantCollection:
         # Scale data
         snips = bdataframe.iloc[:, 1:].values
         snips = StandardScaler().fit_transform(snips)
-
+        
         # K-means
         kmeans = KMeans(n_clusters=clusters, n_init=runs).fit(snips)
 
@@ -258,24 +258,42 @@ class VariantCollection:
             pca = PCA(n_components=2)
             fit_pca = pca.fit_transform(snips)
             pca_data = pd.DataFrame(data=fit_pca, columns=['PC1', 'PC2'])
-            pca_data['Color'] = pd.Series(kmeans.labels_.astype(float))
-            labeled_pca = pd.concat([pca_data, bdataframe[['Cell']]], 
+            pca_data['Color'] = pd.Series(kmeans.labels_.astype(int))
+            pca_data = pd.concat([pca_data, bdataframe[['Cell']]], 
                                     axis=1)
+            
+            centroids = kmeans.cluster_centers_
+            fit_centroids = pca.fit_transform(centroids)
+            
+            # Verbose - print cluster centers
+            if verbose == 1:
+                for cluster in fit_centroids:
+                    print(cluster)
+            
+            for index, row in pca_data.iterrows():
+                pc1 = pca_data.loc[index, 'PC1']
+                centroid_x = fit_centroids[int(pca_data.loc[index, 'Color'])][0]
+                dx = pc1 - centroid_x
+                pc2 = pca_data.loc[index, 'PC2']
+                centroid_y = fit_centroids[int(pca_data.loc[index, 'Color'])][1]
+                dy = pc2 - centroid_y
+                
+                distance = math.sqrt(dx**2 + dy**2)
+                pca_data.loc[index, 'Distance from centroid'] = distance
             
             # User-defined markers
             if custom_markers:
                 for marker in custom_markers.keys():
-                    cell_column = labeled_pca.Cell
+                    cell_column = pca_data.Cell
                     cut = cell_column.str.contains(custom_markers[marker])
-                    filtered = pca_data[cut]
-                    plt.scatter(filtered['PC1'], filtered['PC2'], 
-                                marker=marker, c=filtered['Color'], 
-                                s=50, alpha=alpha)
-            else:
-                # Plot using k-means colors
-                plt.scatter(pca_data['PC1'], pca_data['PC2'], marker=marker, 
-                            c=kmeans.labels_.astype(float), s=50, alpha=alpha)
+                    pca_data = pca_data[cut]
             
+            # Plot
+            plt.scatter(pca_data['PC1'], pca_data['PC2'], marker=marker, 
+                        c=pca_data['Color'], s=50, alpha=alpha)
+            
+            if plot_centroids:
+                plt.scatter(fit_centroids[:, 0], fit_centroids[:, 1])
             
         else:
             # If not plotting, simply return the kmeans values array
