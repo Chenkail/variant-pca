@@ -190,7 +190,7 @@ class VariantCollection:
         Uses placeholders for lost data
         """
         
-        format_="GT"
+        format_ = "GT"
         
         # Copy header to file, one line at a time
         with open(header_file) as head:
@@ -229,20 +229,24 @@ class VariantCollection:
                 output.write(line + "\n")
     
 
-    def export_cell_lists(self, suffix=".kmcells.txt", clusters=2):
+    def export_cell_lists(self, suffix=".kmcells.txt", clusters=2, 
+                          distance_filter=0):
         """Write lists of cells to files"""
         
-        sorted_cells = self.cell_sort(clusters=clusters)
+        sorted_cells = self.cell_sort(clusters=clusters, 
+                                      distance_filter=distance_filter)
         for k, v in sorted_cells.items():
             list_to_file(v, str(k) + suffix)
     
 
     # -------- Analysis -------- #
 
-    def kmeans(self, clusters=2, runs=25, plot=True, marker=None, 
-               custom_markers={}, alpha=0.75, verbose=0, plot_centroids=False):
+    def kmeans(self, clusters=2, runs=25, plot=True, return_labels=False, marker=None, 
+               custom_markers={}, alpha=0.75, verbose=0, plot_centroids=False, 
+               distance_filter=0):
         """Create PCA 1/2 plot with colors based on k-means clustering"""
         
+        # Duplicate dataframe and use 1 to represent existing data
         bdataframe = self.dataframe.copy()
         bdataframe = bdataframe.replace("[0-9]+[/|][0-9]+.*", "1", regex=True)
         
@@ -258,29 +262,59 @@ class VariantCollection:
             pca = PCA(n_components=2)
             fit_pca = pca.fit_transform(snips)
             pca_data = pd.DataFrame(data=fit_pca, columns=['PC1', 'PC2'])
-            pca_data['Color'] = pd.Series(kmeans.labels_.astype(int))
+            # Add k-means labels
+            pca_data['Cluster'] = pd.Series(kmeans.labels_.astype(int))
+            # Add cell barcode labels
             pca_data = pd.concat([pca_data, bdataframe[['Cell']]], 
                                     axis=1)
             
             centroids = kmeans.cluster_centers_
-            fit_centroids = pca.fit_transform(centroids)
-            
+            centroids = pca.fit_transform(centroids)
+
             # Verbose - print cluster centers
             if verbose == 1:
-                for cluster in fit_centroids:
+                for cluster in centroids:
                     print(cluster)
             
-            for index, row in pca_data.iterrows():
-                pc1 = pca_data.loc[index, 'PC1']
-                centroid_x = fit_centroids[int(pca_data.loc[index, 'Color'])][0]
-                dx = pc1 - centroid_x
-                pc2 = pca_data.loc[index, 'PC2']
-                centroid_y = fit_centroids[int(pca_data.loc[index, 'Color'])][1]
-                dy = pc2 - centroid_y
+            # Filter out cells based on distance from their centroid
+            if distance_filter:
+                # Calculate distances and add column to dataframe
+                for index, row in pca_data.iterrows():
+                    pc1 = pca_data.loc[index, 'PC1']
+                    centroid_x = centroids[int(pca_data.loc[index, 'Cluster'])][0]
+                    dx = pc1 - centroid_x
+                    pc2 = pca_data.loc[index, 'PC2']
+                    centroid_y = centroids[int(pca_data.loc[index, 'Cluster'])][1]
+                    dy = pc2 - centroid_y
+                    
+                    # TODO: Using 1 dimension for now, add more later?
+                    # distance = math.sqrt(dx**2 + dy**2)
+                    distance = dx
+
+                    pca_data.loc[index, 'Distance'] = distance
+
+                # For each centroid, filter based on distance percentile
+                chunk_list = []
+                start_index = 0
+                for i in range(clusters):
+                    # Get only rows in dataframe corresponding to centroid
+                    chunk = pca_data[pca_data['Cluster'] == i]
+                    
+                    # Make bins
+                    bins = [0, 1-distance_filter, 1]
+                    labels = ["keep", "toss"]
+                    chunk['KEEP'] = pd.qcut(chunk['Distance'], bins,
+                                            labels=labels)
+                    # print(chunk)
+                    chunk = chunk[chunk['KEEP'] != "toss"]
+                    chunk.index += start_index
+                    start_index += len(chunk.index)
+                    # print(chunk)
+                    chunk_list.append(chunk)
                 
-                distance = math.sqrt(dx**2 + dy**2)
-                pca_data.loc[index, 'Distance from centroid'] = distance
-            
+                # Merge all filtered data
+                pca_data = pd.concat(chunk_list)
+
             # User-defined markers
             if custom_markers:
                 for marker in custom_markers.keys():
@@ -290,20 +324,21 @@ class VariantCollection:
             
             # Plot
             plt.scatter(pca_data['PC1'], pca_data['PC2'], marker=marker, 
-                        c=pca_data['Color'], s=50, alpha=alpha)
+                        c=pca_data['Cluster'], s=50, alpha=alpha)
             
             if plot_centroids:
-                plt.scatter(fit_centroids[:, 0], fit_centroids[:, 1])
+                plt.scatter(centroids[:, 0], centroids[:, 1])
             
-        else:
+        if return_labels:
             # If not plotting, simply return the kmeans values array
             return kmeans.labels_
 
 
-    def cell_sort(self, clusters=2):
+    def cell_sort(self, clusters=2, distance_filter=0):
         """Return lists of cell barcodes based on k-means sorting"""
 
-        km = self.kmeans(plot=False, clusters=clusters)
+        km = self.kmeans(plot=False, return_labels=True, clusters=clusters, 
+                         distance_filter=distance_filter)
         data = {}
         for i in range(len(km)):
             if km[i] in data.keys():
